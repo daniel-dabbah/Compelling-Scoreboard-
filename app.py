@@ -1,11 +1,6 @@
 import streamlit as st
-import pandas as pd
-import plotly.graph_objects as go
-import plotly.express as px
 from datetime import datetime, date
 import json
-import os
-import hashlib
 
 # Configure page
 st.set_page_config(
@@ -93,7 +88,7 @@ st.markdown("""
         border: 2px solid #4fd1c7;
         box-shadow: 0 6px 20px rgba(79, 209, 199, 0.15);
         direction: rtl;
-        text-align: right;
+        text-align: center;
     }
     
     .improvement-box {
@@ -104,7 +99,7 @@ st.markdown("""
         border: 2px solid #68d391;
         box-shadow: 0 6px 20px rgba(104, 211, 145, 0.15);
         direction: rtl;
-        text-align: right;
+        text-align: center;
     }
     
     .progress-stats {
@@ -122,9 +117,21 @@ st.markdown("""
         transform: translateY(-3px);
     }
     
-    .submit-container {
+    .chart-container {
+        background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
+        padding: 2rem;
+        border-radius: 18px;
+        margin: 2rem 0;
+        box-shadow: 0 6px 20px rgba(0,0,0,0.1);
+        border: 1px solid #e2e8f0;
+    }
+    
+    .chart-title {
         text-align: center;
-        margin: 3rem 0;
+        font-size: 1.5rem;
+        font-weight: 600;
+        color: #2D3748;
+        margin-bottom: 1.5rem;
     }
     
     .stSlider > div > div {
@@ -226,65 +233,20 @@ def get_user_history(user_id):
         return all_data[user_id]['assessments']
     return []
 
-def create_progress_chart(history):
-    """Create a progress chart showing score improvement over time"""
+def create_simple_progress_chart(history):
+    """Create a simple progress chart using Streamlit's built-in chart"""
     if not history:
         return None
     
-    assessment_numbers = [assessment['assessment_number'] for assessment in history]
-    scores = [assessment['score'] for assessment in history]
+    # Prepare data for chart
+    chart_data = []
+    for assessment in history:
+        chart_data.append({
+            'הערכה': f"הערכה {assessment['assessment_number']}",
+            'ציון': assessment['score']
+        })
     
-    fig = go.Figure()
-    
-    # Add the progress line with pleasant colors
-    fig.add_trace(go.Scatter(
-        x=assessment_numbers,
-        y=scores,
-        mode='lines+markers',
-        name='ההתקדמות שלך',
-        line=dict(color='#4299e1', width=4),
-        marker=dict(size=12, color='#667eea', line=dict(width=2, color='white')),
-        hovertemplate='הערכה מס׳ %{x}<br>ציון: %{y}/100<extra></extra>'
-    ))
-    
-    # Add target line
-    fig.add_hline(y=100, line_dash="dash", line_color="#68d391", 
-                  annotation_text="מטרה: 100", annotation_position="bottom right")
-    
-    # Add starting line
-    fig.add_hline(y=0, line_dash="dash", line_color="#fc8181", 
-                  annotation_text="נקודת התחלה: 0", annotation_position="top right")
-    
-    # Calculate better Y-axis range for more visible improvements - make it longer
-    min_score = min(scores)
-    max_score = max(scores)
-    score_range = max_score - min_score
-    
-    # Make Y-axis longer to show improvements better
-    if score_range < 15:
-        y_min = max(0, min_score - 25)
-        y_max = min(100, max_score + 25)
-    elif score_range < 30:
-        y_min = max(0, min_score - 20)
-        y_max = min(100, max_score + 20)
-    else:
-        y_min = max(0, min_score - 15)
-        y_max = min(100, max_score + 15)
-    
-        fig.update_layout(
-        title='הגרף של ההתקדמות שלי',
-        xaxis_title='מספר ההערכה',
-        yaxis_title='ציון (0-100)',
-        yaxis=dict(range=[y_min, y_max]),
-        xaxis=dict(dtick=1),
-        template='plotly_white',
-        height=400,
-        showlegend=False,
-        font=dict(family="Heebo, sans-serif"),
-        title_x=0.5
-    )
-    
-    return fig
+    return chart_data
 
 def display_statistics(history):
     """Display progress statistics in Hebrew"""
@@ -445,10 +407,20 @@ def main():
             # Statistics
             display_statistics(history)
             
-            # Progress chart
-            chart = create_progress_chart(history)
-            if chart:
-                st.plotly_chart(chart, use_container_width=True)
+            # Simple progress chart using Streamlit's built-in chart
+            chart_data = create_simple_progress_chart(history)
+            if chart_data:
+                st.markdown('<div class="chart-container">', unsafe_allow_html=True)
+                st.markdown('<div class="chart-title">הגרף של ההתקדמות שלי</div>', unsafe_allow_html=True)
+                
+                # Create a simple line chart
+                scores = [assessment['score'] for assessment in history]
+                assessment_numbers = [assessment['assessment_number'] for assessment in history]
+                
+                # Display as line chart
+                chart_dict = {f"הערכה {num}": score for num, score in zip(assessment_numbers, scores)}
+                st.line_chart(chart_dict, height=400)
+                st.markdown('</div>', unsafe_allow_html=True)
             
             # Recent assessments table
             st.markdown("### כל ההערכות שעשיתי")
@@ -463,6 +435,8 @@ def main():
                 })
             
             if recent_data:
+                # Convert to a format suitable for st.table or st.dataframe
+                import pandas as pd
                 df = pd.DataFrame(recent_data)
                 st.dataframe(df, use_container_width=True, hide_index=True)
 
