@@ -171,31 +171,17 @@ ADDITIONAL_QUESTIONS = [
 ]
 
 def get_user_id():
-    """Generate a persistent user ID based on browser"""
+    """Get user ID based on name input"""
     if 'user_id' not in st.session_state:
-        # Try to load from a local file first
-        try:
-            with open('user_data.json', 'r', encoding='utf-8') as f:
-                data = json.load(f)
-                if 'user_id' in data:
-                    st.session_state.user_id = data['user_id']
-                else:
-                    # Generate new ID and save it
-                    import random
-                    import string
-                    st.session_state.user_id = ''.join(random.choices(string.ascii_letters + string.digits, k=10))
-                    data['user_id'] = st.session_state.user_id
-                    with open('user_data.json', 'w', encoding='utf-8') as f:
-                        json.dump(data, f, ensure_ascii=False, indent=2)
-        except (FileNotFoundError, json.JSONDecodeError):
-            # Create new user file
-            import random
-            import string
-            st.session_state.user_id = ''.join(random.choices(string.ascii_letters + string.digits, k=10))
-            data = {'user_id': st.session_state.user_id, 'assessments': []}
-            with open('user_data.json', 'w', encoding='utf-8') as f:
-                json.dump(data, f, ensure_ascii=False, indent=2)
+        st.session_state.user_id = None
     return st.session_state.user_id
+
+def set_user_id(name):
+    """Set user ID based on name"""
+    # Create a simple ID from the name
+    user_id = name.strip().replace(" ", "_").lower()
+    st.session_state.user_id = user_id
+    return user_id
 
 def get_feedback_message(score):
     """Generate short feedback based on the total score"""
@@ -223,43 +209,34 @@ def get_improvement_message(current_score, previous_score=None):
         return "לא נורא, נשתפר!"
 
 def load_user_data():
-    """Load user data from file"""
-    try:
-        with open('user_data.json', 'r', encoding='utf-8') as f:
-            data = json.load(f)
-            # If it's old format (just user_id), convert to new format
-            if 'assessments' not in data:
-                data = {'user_id': data.get('user_id', ''), 'assessments': []}
-            return data
-    except (FileNotFoundError, json.JSONDecodeError):
-        return {'user_id': '', 'assessments': []}
-
-def save_user_data(data):
-    """Save user data to file"""
-    try:
-        with open('user_data.json', 'w', encoding='utf-8') as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-    except Exception as e:
-        st.error(f"שגיאה בשמירת הנתונים: {e}")
+    """Load all users data from session state"""
+    if 'all_users_data' not in st.session_state:
+        st.session_state.all_users_data = {}
+    return st.session_state.all_users_data
 
 def save_assessment_result(user_id, score, responses):
     """Save assessment result for the current user"""
-    data = load_user_data()
+    all_data = load_user_data()
+    
+    if user_id not in all_data:
+        all_data[user_id] = {'assessments': []}
     
     assessment = {
         'date': datetime.now().isoformat(),
         'score': score,
         'responses': responses,
-        'assessment_number': len(data['assessments']) + 1
+        'assessment_number': len(all_data[user_id]['assessments']) + 1
     }
     
-    data['assessments'].append(assessment)
-    save_user_data(data)
+    all_data[user_id]['assessments'].append(assessment)
+    st.session_state.all_users_data = all_data
 
 def get_user_history(user_id):
     """Get assessment history for current user"""
-    data = load_user_data()
-    return data.get('assessments', [])
+    all_data = load_user_data()
+    if user_id and user_id in all_data:
+        return all_data[user_id]['assessments']
+    return []
 
 def create_simple_progress_chart(history):
     """Create a simple progress chart using Streamlit's built-in chart"""
@@ -312,11 +289,35 @@ def display_statistics(history):
         """.format(total_assessments), unsafe_allow_html=True)
 
 def main():
-    # Get unique user ID
-    user_id = get_user_id()
-    
     # Header
     st.markdown('<h1 class="main-header">הערכה פנימית - לוח תוצאות</h1>', unsafe_allow_html=True)
+    
+    # Get user ID
+    user_id = get_user_id()
+    
+    # If no user ID, show login screen
+    if not user_id:
+        st.markdown("<div style='text-align: center; margin: 3rem 0;'>", unsafe_allow_html=True)
+        st.markdown("### היכנס עם השם שלך")
+        st.markdown("כתוב את השם שלך כדי להתחיל או לחזור להערכות שלך")
+        
+        name = st.text_input("השם שלי:", placeholder="כתוב את השם המלא שלך")
+        
+        if st.button("להיכנס", type="primary", disabled=not name.strip()):
+            if name.strip():
+                set_user_id(name.strip())
+                st.rerun()
+        
+        st.markdown("</div>", unsafe_allow_html=True)
+        return
+    
+    # Show current user
+    st.markdown(f"<div style='text-align: center; color: #666; margin-bottom: 1rem;'>שלום {user_id.replace('_', ' ').title()}!</div>", unsafe_allow_html=True)
+    
+    # Add logout button in sidebar or corner
+    if st.button("להחליף משתמש", key="logout"):
+        st.session_state.user_id = None
+        st.rerun()
     
     # Initialize session state
     if 'current_responses' not in st.session_state:
@@ -463,10 +464,8 @@ def main():
                 })
             
             if recent_data:
-                # Convert to a format suitable for st.table or st.dataframe
-                import pandas as pd
-                df = pd.DataFrame(recent_data)
-                st.dataframe(df, use_container_width=True, hide_index=True)
+                # Convert to a format suitable for st.dataframe
+                st.dataframe(recent_data, use_container_width=True)
 
 if __name__ == "__main__":
     main()
