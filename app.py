@@ -171,11 +171,30 @@ ADDITIONAL_QUESTIONS = [
 ]
 
 def get_user_id():
-    """Generate a unique user ID based on browser session"""
+    """Generate a persistent user ID based on browser"""
     if 'user_id' not in st.session_state:
-        import random
-        import string
-        st.session_state.user_id = ''.join(random.choices(string.ascii_letters + string.digits, k=10))
+        # Try to load from a local file first
+        try:
+            with open('user_data.json', 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                if 'user_id' in data:
+                    st.session_state.user_id = data['user_id']
+                else:
+                    # Generate new ID and save it
+                    import random
+                    import string
+                    st.session_state.user_id = ''.join(random.choices(string.ascii_letters + string.digits, k=10))
+                    data['user_id'] = st.session_state.user_id
+                    with open('user_data.json', 'w', encoding='utf-8') as f:
+                        json.dump(data, f, ensure_ascii=False, indent=2)
+        except (FileNotFoundError, json.JSONDecodeError):
+            # Create new user file
+            import random
+            import string
+            st.session_state.user_id = ''.join(random.choices(string.ascii_letters + string.digits, k=10))
+            data = {'user_id': st.session_state.user_id, 'assessments': []}
+            with open('user_data.json', 'w', encoding='utf-8') as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
     return st.session_state.user_id
 
 def get_feedback_message(score):
@@ -204,34 +223,43 @@ def get_improvement_message(current_score, previous_score=None):
         return "לא נורא, נשתפר!"
 
 def load_user_data():
-    """Load user data from session state"""
-    if 'all_users_data' not in st.session_state:
-        st.session_state.all_users_data = {}
-    return st.session_state.all_users_data
+    """Load user data from file"""
+    try:
+        with open('user_data.json', 'r', encoding='utf-8') as f:
+            data = json.load(f)
+            # If it's old format (just user_id), convert to new format
+            if 'assessments' not in data:
+                data = {'user_id': data.get('user_id', ''), 'assessments': []}
+            return data
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {'user_id': '', 'assessments': []}
+
+def save_user_data(data):
+    """Save user data to file"""
+    try:
+        with open('user_data.json', 'w', encoding='utf-8') as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        st.error(f"שגיאה בשמירת הנתונים: {e}")
 
 def save_assessment_result(user_id, score, responses):
     """Save assessment result for the current user"""
-    all_data = load_user_data()
-    
-    if user_id not in all_data:
-        all_data[user_id] = {'assessments': []}
+    data = load_user_data()
     
     assessment = {
         'date': datetime.now().isoformat(),
         'score': score,
         'responses': responses,
-        'assessment_number': len(all_data[user_id]['assessments']) + 1
+        'assessment_number': len(data['assessments']) + 1
     }
     
-    all_data[user_id]['assessments'].append(assessment)
-    st.session_state.all_users_data = all_data
+    data['assessments'].append(assessment)
+    save_user_data(data)
 
 def get_user_history(user_id):
     """Get assessment history for current user"""
-    all_data = load_user_data()
-    if user_id in all_data:
-        return all_data[user_id]['assessments']
-    return []
+    data = load_user_data()
+    return data.get('assessments', [])
 
 def create_simple_progress_chart(history):
     """Create a simple progress chart using Streamlit's built-in chart"""
